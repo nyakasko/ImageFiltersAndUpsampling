@@ -7,7 +7,7 @@
  
  Input normal resolution rgb image:
  
-  <img src="https://github.com/nyakasko/Image-filters-and-upsampling/blob/main/data/view5.PNG" width="300" height="300">
+  <img src="https://github.com/nyakasko/Image-filters-and-upsampling/blob/main/data/view5.png" width="300" height="300">
 
 Output upsampled depth image:
 
