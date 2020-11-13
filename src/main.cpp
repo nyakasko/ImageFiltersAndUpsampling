@@ -4,8 +4,8 @@
 
 # define M_PI           3.14159265358979323846
 
-void BoxFilter(const cv::Mat& input, cv::Mat& output) {
-
+cv::Mat BoxFilter(const cv::Mat& input) {
+	cv::Mat output(input.size(), input.type());
 	const auto width = input.cols;
 	const auto height = input.rows;
 
@@ -27,6 +27,7 @@ void BoxFilter(const cv::Mat& input, cv::Mat& output) {
 			output.at<uchar>(r, c) = sum / (window_size * window_size);
 		}
 	}
+	return output;
 }
 
 cv::Mat CreateGaussianKernel_2(int window_size) {
@@ -85,9 +86,10 @@ cv::Mat CreateGaussianKernel(int window_size, float sigma = 1) // 0.1 ... 3
 	return kernel;
 }
 
-void OurFilter_Bilateral(const cv::Mat& input, cv::Mat& output, const int window_size = 5, float sigma = 5) {
+cv::Mat OurFilter_Bilateral(const cv::Mat& input, const int window_size = 5, float sigma = 5) {
 	const auto width = input.cols;
 	const auto height = input.rows;
+	cv::Mat output(input.size(), input.type());
 
 	cv::Mat gaussianKernel = CreateGaussianKernel(window_size, 1); // sigma for the spatial filter (Gaussian, \(w_G\) kernel)
 
@@ -134,6 +136,7 @@ void OurFilter_Bilateral(const cv::Mat& input, cv::Mat& output, const int window
 
 		}
 	}
+	return output;
 }
 
 void Joint_Bilateral(const cv::Mat& input_rgb, const cv::Mat& input_depth, cv::Mat& output, const int window_size = 5, float sigma = 5) {
@@ -180,8 +183,8 @@ void Joint_Bilateral(const cv::Mat& input_rgb, const cv::Mat& input_depth, cv::M
 	}
 }
 
-void GaussianFilter(const cv::Mat& input, cv::Mat& output)
-{
+cv::Mat GaussianFilter(const cv::Mat& input){
+	cv::Mat output(input.size(), input.type());
 	const auto width = input.cols;
 	const auto height = input.rows;
 	const int window_size = 5;
@@ -204,7 +207,7 @@ void GaussianFilter(const cv::Mat& input, cv::Mat& output)
 			output.at<uchar>(r, c) = sum;
 		}
 	}
-
+	return output;
 }
 
 void SSD(const cv::Mat& img1, const cv::Mat& img2, std::string FilterType)
@@ -334,7 +337,7 @@ void SSIM(const cv::Mat& img1, const cv::Mat& img2, std::string FilterType)
 	std::cout << FilterType + " " << ssim << std::endl;
 }
 
-void Upsampling(const cv::Mat& input_rgb, const cv::Mat& input_depth, cv::Mat& output) {
+cv::Mat Upsampling(const cv::Mat& input_rgb, const cv::Mat& input_depth) {
 	int uf = log2(input_rgb.rows / input_depth.rows);
 	cv::Mat D = input_depth.clone();
 	cv::Mat I = input_rgb.clone();
@@ -346,12 +349,21 @@ void Upsampling(const cv::Mat& input_rgb, const cv::Mat& input_depth, cv::Mat& o
 	}
 	cv::resize(D, D, input_rgb.size());
 	Joint_Bilateral(input_rgb, D, D, 5, 0.1);
-	output = D;
+	return D;
 }
 
-int main() {
+int main(int argc, char** argv) {
 
-	cv::Mat im = cv::imread("D:/source/repos/sesn_ora/lena.png", 0);
+	if (argc < 2) {
+		std::cerr << "Usage: " << argv[0] << "DATA FOLDER PATH" << std::endl;
+		return 1;
+	}
+
+	std::string dataFolderPath = argv[1];
+	cv::Mat input_rgb = cv::imread(dataFolderPath + "view5.png", 0);
+	cv::Mat input_depth = cv::imread(dataFolderPath + "lowres_depth.png", 0);
+	cv::Mat im = cv::imread(dataFolderPath + "lena.png", 0);
+
 	if (im.data == nullptr) {
 		std::cerr << "Failed to load image" << std::endl;
 	}
@@ -362,25 +374,22 @@ int main() {
 	cv::randn(noise, mean, stddev);
 	im += noise;
 
+	cv::Mat upSampled = Upsampling(input_rgb, input_depth);
+	imwrite(dataFolderPath + "upsampled_depth.PNG", upSampled);
+
 	cv::Mat output_bila;
-	cv::Mat output_bila_our(im.size(), im.type());
-	cv::Mat input_rgb = cv::imread("D:/source/repos/sesn_ora/view5.png", 0);
-	cv::Mat input_depth = cv::imread("D:/source/repos/sesn_ora/lowres_depth.png", 0);
-	cv::Mat output_joint_bila(input_rgb.size(), input_rgb.type());
-	Upsampling(input_rgb, input_depth, output_joint_bila);
-	imwrite("D:/source/repos/sesn_ora/upsampled_depth.PNG", output_joint_bila);
 	double window_size = 11;
 	cv::bilateralFilter(im, output_bila, window_size, 2 * window_size, window_size / 2); // BILATERAL FILTER
-	OurFilter_Bilateral(im, output_bila_our, 5); // OWN BILATERAL FILTER
+	cv::Mat output_bila_our = OurFilter_Bilateral(im, 5); // OWN BILATERAL FILTER
 
-	//cv::Mat output_gaus;
-	//cv::Mat output_gaus_own(im.size(), im.type());
-	//cv::Mat output_medi;
-	//cv::Mat output_box(im.size(), im.type());
-	//cv::GaussianBlur(im, output_gaus, cv::Size(7, 7), 0, 0);; // GAUSSIAN FILTER
-	//BoxFilter(im, output_box); // BOX FILTER
-	//GaussianFilter(im, output_gaus_own); // OWN GAUSSIAN FILTER
-	//cv::medianBlur(im, output_medi, 3); // MEDIAN FILTER
+	cv::Mat output_gaus;
+	cv::GaussianBlur(im, output_gaus, cv::Size(7, 7), 0, 0);; // GAUSSIAN FILTER
+
+	cv::Mat output_box = BoxFilter(im); // BOX FILTER
+	cv::Mat output_gaus_own = GaussianFilter(im); // OWN GAUSSIAN FILTER
+
+	cv::Mat output_medi;
+	cv::medianBlur(im, output_medi, 3); // MEDIAN FILTER
 
 	std::cout << "SSD" << std::endl;
 	SSD(input, output_bila, "Bilateral");
