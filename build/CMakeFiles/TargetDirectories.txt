@@ -1,0 +1,3 @@
+D:/source/repos/sesn_ora/build/CMakeFiles/HelloWorld_Exec.dir
+D:/source/repos/sesn_ora/build/CMakeFiles/ALL_BUILD.dir
+D:/source/repos/sesn_ora/build/CMakeFiles/ZERO_CHECK.dir

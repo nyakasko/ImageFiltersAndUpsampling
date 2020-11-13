@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="16.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="D:\source\repos\sesn_ora\build\CMakeFiles\d1e5a3b28c7b2ce2070e5a0047e2b635\generate.stamp.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{251E1D74-A421-38C6-86A4-EC21C271F7BE}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>
