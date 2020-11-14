@@ -113,12 +113,12 @@ cv::Mat GaussianFilter(const cv::Mat& input) {
 	return output;
 }
 
-cv::Mat OurFilter_Bilateral(const cv::Mat& input, const int window_size = 5, float sigma = 5) {
+cv::Mat OurFilter_Bilateral(const cv::Mat& input, const int window_size = 5, float spatial_sigma = 1, float spectral_sigma = 5) {
 	const auto width = input.cols;
 	const auto height = input.rows;
 	cv::Mat output(input.size(), input.type());
 
-	cv::Mat gaussianKernel = CreateGaussianKernel(window_size, 1); // sigma for the spatial filter (Gaussian, \(w_G\) kernel)
+	cv::Mat gaussianKernel = CreateGaussianKernel(window_size, spatial_sigma); // sigma for the spatial filter (Gaussian, \(w_G\) kernel)
 
 	for (int r = 0; r < height; ++r) {
 		for (int c = 0; c < width; ++c) {
@@ -149,8 +149,8 @@ cv::Mat OurFilter_Bilateral(const cv::Mat& input, const int window_size = 5, flo
 						= d(input.at<uchar>(r, c), input.at<uchar>(r + i, c + j));
 
 					float w
-						= p(range_difference, sigma) // sigma for the spectral filter (\(f\) in the slides
-						* gaussianKernel.at<float>(i + window_size / 2, j + window_size / 2);
+						= p(range_difference, spectral_sigma) // spectral filter
+						* gaussianKernel.at<float>(i + window_size / 2, j + window_size / 2); // spatial filter
 
 					sum
 						+= input.at<uchar>(r + i, c + j) * w;
@@ -225,7 +225,7 @@ cv::Mat Upsampling(const cv::Mat& input_rgb, const cv::Mat& input_depth) {
 	return D;
 }
 
-void SSD(const cv::Mat& img1, const cv::Mat& img2, std::string FilterType)
+double SSD(const cv::Mat& img1, const cv::Mat& img2)
 {
 	double ssd = 0;
 	double diff = 0;
@@ -235,25 +235,10 @@ void SSD(const cv::Mat& img1, const cv::Mat& img2, std::string FilterType)
 			ssd += diff * diff;
 		}
 	}
-	std::cout << FilterType + " " << ssd << std::endl;
+	return ssd;
 }
 
-void RMSE(const cv::Mat& img1, const cv::Mat& img2, std::string FilterType)
-{
-	int size = img1.rows * img1.cols;
-	double ssd = 0;
-	double diff = 0;
-	for (int r = 0; r < img1.rows; ++r) {
-		for (int c = 0; c < img1.cols; ++c) {
-			diff = img1.at<uchar>(r, c) - img2.at<uchar>(r, c);
-			ssd += diff * diff;
-		}
-	}
-	double mse = (double)(ssd / size);
-	std::cout << FilterType + " " << sqrt(mse) << std::endl;
-}
-
-void MSE(const cv::Mat& img1, const cv::Mat& img2, std::string FilterType)
+double RMSE(const cv::Mat& img1, const cv::Mat& img2)
 {
 	int size = img1.rows * img1.cols;
 	double ssd = 0;
@@ -265,10 +250,25 @@ void MSE(const cv::Mat& img1, const cv::Mat& img2, std::string FilterType)
 		}
 	}
 	double mse = (double)(ssd / size);
-	std::cout << FilterType + " " << mse << std::endl;
+	return sqrt(mse);
 }
 
-void PSNR(const cv::Mat& img1, const cv::Mat& img2, std::string FilterType)
+double MSE(const cv::Mat& img1, const cv::Mat& img2)
+{
+	int size = img1.rows * img1.cols;
+	double ssd = 0;
+	double diff = 0;
+	for (int r = 0; r < img1.rows; ++r) {
+		for (int c = 0; c < img1.cols; ++c) {
+			diff = img1.at<uchar>(r, c) - img2.at<uchar>(r, c);
+			ssd += diff * diff;
+		}
+	}
+	double mse = (double)(ssd / size);
+	return mse;
+}
+
+double PSNR(const cv::Mat& img1, const cv::Mat& img2)
 {
 
 	double max = 255;
@@ -283,7 +283,7 @@ void PSNR(const cv::Mat& img1, const cv::Mat& img2, std::string FilterType)
 	}
 	double mse = (double)(ssd / size);
 	double psnr = 10 * log10((max * max) / mse);
-	std::cout << FilterType + " " << psnr << std::endl;
+	return psnr;
 }
 
 long double mean(const cv::Mat& img)
@@ -335,7 +335,7 @@ double covariance(const cv::Mat& img1, const cv::Mat& img2)
 	return sum / size;
 }
 
-void SSIM(const cv::Mat& img1, const cv::Mat& img2, std::string FilterType)
+long double SSIM(const cv::Mat& img1, const cv::Mat& img2)
 {
 	long double ssim = 0;
 	long double k1 = 0.01, k2 = 0.03, L = 255;
@@ -349,7 +349,7 @@ void SSIM(const cv::Mat& img1, const cv::Mat& img2, std::string FilterType)
 	long double covariance_xy = covariance(img1, img2);
 
 	ssim = ((2 * mu_x * mu_y + C1) * (2 * covariance_xy + C2)) / ((mu_x * mu_x + mu_y * mu_y + C1) * (variance_x * variance_x + variance_y * variance_y + C2));
-	std::cout << FilterType + " " << ssim << std::endl;
+	return ssim;
 }
 
 
@@ -377,60 +377,22 @@ int main(int argc, char** argv) {
 
 	cv::Mat upSampled = Upsampling(input_rgb, input_depth);
 	imwrite(dataFolderPath + "upsampled_depth.PNG", upSampled);
-
-	cv::Mat output_bila;
-	double window_size = 11;
-	cv::bilateralFilter(im, output_bila, window_size, 2 * window_size, window_size / 2); // BILATERAL FILTER
-	cv::Mat output_bila_our = OurFilter_Bilateral(im, 5); // OWN BILATERAL FILTER
-
-	cv::Mat output_gaus;
-	cv::GaussianBlur(im, output_gaus, cv::Size(7, 7), 0, 0);; // GAUSSIAN FILTER
-
-	cv::Mat output_box = BoxFilter(im); // BOX FILTER
-	cv::Mat output_gaus_own = GaussianFilter(im); // OWN GAUSSIAN FILTER
-
-	cv::Mat output_medi;
-	cv::medianBlur(im, output_medi, 3); // MEDIAN FILTER
-
-	//std::cout << "SSD" << std::endl;
-	//SSD(input, output_bila, "Bilateral");
-	//SSD(input, output_bila_our, "OwnBilateralFilter");
-	//SSD(input, output_gaus, "Gaussian");
-	//SSD(input, output_gaus_own, "OwnGaussianFilter");
-	//SSD(input, output_medi, "Median");
-	//SSD(input, output_box, "BoxFilter");
-
-	//std::cout << "RMSE" << std::endl;
-	//RMSE(input, output_bila, "Bilateral");
-	//RMSE(input, output_bila_our, "OwnBilateralFilter");
-	//RMSE(input, output_gaus, "Gaussian");
-	//RMSE(input, output_gaus_own, "OwnGaussianFilter");
-	//RMSE(input, output_medi, "Median");
-	//RMSE(input, output_box, "BoxFilter");
-
-	//std::cout << "MSE" << std::endl;
-	//MSE(input, output_bila, "Bilateral");
-	//MSE(input, output_bila_our, "OwnBilateralFilter");
-	//MSE(input, output_gaus, "Gaussian");
-	//MSE(input, output_gaus_own, "OwnGaussianFilter");
-	//MSE(input, output_medi, "Median");
-	//MSE(input, output_box, "BoxFilter");
-
-	//std::cout << "PSNR" << std::endl;
-	//PSNR(input, output_bila, "Bilateral");
-	//PSNR(input, output_bila_our, "OwnBilateralFilter");
-	//PSNR(input, output_gaus, "Gaussian");
-	//PSNR(input, output_gaus_own, "OwnGaussianFilter");
-	//PSNR(input, output_medi, "Median");
-	//PSNR(input, output_box, "BoxFilter");
-	
-	//std::cout << "SSIM" << std::endl;
-	//SSIM(input, output_bila, "Bilateral");
-	//SSIM(input, output_bila_our, "OwnBilateralFilter");
-	//SSIM(input, output_gaus, "Gaussian");
-	//SSIM(input, output_gaus_own, "OwnGaussianFilter");
-	//SSIM(input, output_medi, "Median");
-	//SSIM(input, output_box, "BoxFilter");
+	std::vector<float> spatial_sigma = { 0.1, 1, 1.5, 3 };
+	std::vector<float> spectral_sigma = { 1, 3, 5, 10 };
+	for (auto&& i : spatial_sigma) {
+		for (auto&& j : spectral_sigma) {
+			cv::Mat output_bila_our = OurFilter_Bilateral(im, 5, i, j);
+			cv::Mat outputCopy = output_bila_our.clone();
+			cv::Mat inputCopy = im.clone();
+			double ssd = SSD(inputCopy, outputCopy);
+			double rmse = RMSE(inputCopy, outputCopy);
+			double psnr = PSNR(inputCopy, outputCopy);
+			long double ssim = SSIM(inputCopy, outputCopy);
+			imwrite(dataFolderPath + "/bilateralComparisons/" + "spatial_sigma_" + std::to_string(i) + "_spectral_sigma_" 
+				+ std::to_string(j) + "_ssd_" + std::to_string(ssd) + "_rmse_" + std::to_string(rmse) +
+				"_psnr_" + std::to_string(psnr) + "_ssim_" + std::to_string(ssim) + ".PNG", output_bila_our);
+		}
+	}
 
 	return 0;
 }
