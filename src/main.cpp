@@ -130,7 +130,7 @@ cv::Mat OurFilter_Bilateral(const cv::Mat& input, const int window_size = 5, flo
 		return std::abs(a - b);
 	};
 
-	auto p = [](float val, float sigma) {
+	auto p = [](float val, float sigma) { // use of weighting function p : dissimilar pixels get lower weights, preserves strong edges, smooths other regions
 		const float sigmaSq = sigma * sigma;
 		const float normalization = std::sqrt(2 * M_PI) * sigma;
 		return (1 / normalization) * std::exp(-val / (2 * sigmaSq));
@@ -167,6 +167,9 @@ cv::Mat OurFilter_Bilateral(const cv::Mat& input, const int window_size = 5, flo
 }
 
 void Joint_Bilateral(const cv::Mat& input_rgb, const cv::Mat& input_depth, cv::Mat& output, const int window_size = 5, float sigma = 5) {
+	// converting the bilateral filter to Guided Joint bilateral filter for guided image upsampling 
+	// upsampling a low resolution depth image, guided by an RGB image
+	// weights formed using colors (image input_rgb), filtering happens by modifying depth (image input_depth)
 	const auto width = input_rgb.cols;
 	const auto height = input_rgb.rows;
 
@@ -175,7 +178,7 @@ void Joint_Bilateral(const cv::Mat& input_rgb, const cv::Mat& input_depth, cv::M
 		return std::abs(a - b);
 	};
 
-	auto p = [](float val, float sigma) {
+	auto p = [](float val, float sigma) {	// use of weighting function p : dissimilar pixels get lower weights, preserves strong edges, smooths other regions
 		const float sigmaSq = sigma * sigma;
 		const float normalization = std::sqrt(2 * M_PI) * sigma;
 		return (1 / normalization) * std::exp(-val / (2 * sigmaSq));
@@ -191,14 +194,14 @@ void Joint_Bilateral(const cv::Mat& input_rgb, const cv::Mat& input_depth, cv::M
 				for (int j = -window_size / 2; j <= window_size / 2; ++j) {
 
 					float range_difference
-						= d(input_rgb.at<uchar>(r, c), input_rgb.at<uchar>(r + i, c + j));
+						= d(input_rgb.at<uchar>(r, c), input_rgb.at<uchar>(r + i, c + j)); // using the rgb image with the spectral filter
 
 					float w
 						= p(range_difference, sigma) // sigma for the spectral filter (\(f\) in the slides
 						* gaussianKernel.at<float>(i + window_size / 2, j + window_size / 2);
 
 					sum
-						+= input_depth.at<uchar>(r + i, c + j) * w;
+						+= input_depth.at<uchar>(r + i, c + j) * w; // using the depth image with the spatial filter
 					sum_w
 						+= w;
 				}
@@ -211,17 +214,18 @@ void Joint_Bilateral(const cv::Mat& input_rgb, const cv::Mat& input_depth, cv::M
 }
 
 cv::Mat Upsampling(const cv::Mat& input_rgb, const cv::Mat& input_depth) {
-	int uf = log2(input_rgb.rows / input_depth.rows);
-	cv::Mat D = input_depth.clone();
-	cv::Mat I = input_rgb.clone();
+	// applying the joint bilateral filter to upsample a depth image, guided by an RGB image -- iterative upsampling
+	int uf = log2(input_rgb.rows / input_depth.rows); // upsample factor
+	cv::Mat D = input_depth.clone(); // lowres depth image
+	cv::Mat I = input_rgb.clone(); // highres rgb image
 	for (int i = 0; i < uf; ++i)
 	{
-		cv::resize(D, D, D.size() * 2);
-		cv::resize(I, I, D.size());
-		Joint_Bilateral(I, D, D, 5, 0.1);
+		cv::resize(D, D, D.size() * 2); // doubling the size of the depth image
+		cv::resize(I, I, D.size());		// resizing the rgb image to depth image size
+		Joint_Bilateral(I, D, D, 5, 0.1); // applying the joint bilateral filter with changed size depth and rbg images
 	}
-	cv::resize(D, D, input_rgb.size());
-	Joint_Bilateral(input_rgb, D, D, 5, 0.1);
+	cv::resize(D, D, input_rgb.size()); // in the end resizing the depth image to rgb image size
+	Joint_Bilateral(input_rgb, D, D, 5, 0.1); // applying the joint bilateral filter with full res. size images
 	return D;
 }
 
@@ -301,7 +305,7 @@ long double mean(const cv::Mat& img)
 
 long double variance(const cv::Mat& img)
 {
-	cv::Mat var_matrix = img;
+	cv::Mat var_matrix = img.clone();
 	long double sum = 0;
 	int size = var_matrix.rows * var_matrix.cols;
 	long double mean_ = mean(var_matrix);
@@ -356,7 +360,7 @@ long double SSIM(const cv::Mat& img1, const cv::Mat& img2)
 int main(int argc, char** argv) {
 
 	if (argc < 2) {
-		std::cerr << "Usage: " << argv[0] << "DATA FOLDER PATH" << std::endl;
+		std::cerr << "Usage: " << argv[0] << " DATA_FOLDER PATH" << std::endl;
 		return 1;
 	}
 
@@ -375,20 +379,18 @@ int main(int argc, char** argv) {
 	cv::randn(noise, mean, stddev);
 	im += noise;
 
-	cv::Mat upSampled = Upsampling(input_rgb, input_depth);
+	cv::Mat upSampled = Upsampling(input_rgb, input_depth); // converting the bilateral filter to Guided Joint bilateral filter for guided image upsampling
 	imwrite(dataFolderPath + "upsampled_depth.PNG", upSampled);
-	std::vector<float> spatial_sigma = { 0.1, 1, 1.5, 3 };
-	std::vector<float> spectral_sigma = { 1, 3, 5, 10 };
-	for (auto&& i : spatial_sigma) {
-		for (auto&& j : spectral_sigma) {
-			cv::Mat output_bila_our = OurFilter_Bilateral(im, 5, i, j);
-			cv::Mat outputCopy = output_bila_our.clone();
-			cv::Mat inputCopy = im.clone();
-			double ssd = SSD(inputCopy, outputCopy);
-			double rmse = RMSE(inputCopy, outputCopy);
-			double psnr = PSNR(inputCopy, outputCopy);
-			long double ssim = SSIM(inputCopy, outputCopy);
-			imwrite(dataFolderPath + "/bilateralComparisons/" + "spatial_sigma_" + std::to_string(i) + "_spectral_sigma_" 
+	std::vector<float> spatial_sigma = { 0.1, 1, 1.5, 3 }; // choosing four different levels of sigmas for the spatial and four for the spectral filter.
+	std::vector<float> spectral_sigma = { 1, 3, 5, 10 }; // testing all combinations, 16 in total, by running the bilateral filter on the image of my choosing
+	for (auto i : spatial_sigma) {	// evaluating the filter on an image of my choice
+		for (auto j : spectral_sigma) {
+			cv::Mat output_bila_our = OurFilter_Bilateral(im, 5, i, j); // implementation of the bilateral filter
+			double ssd = SSD(im, output_bila_our);
+			double rmse = RMSE(im, output_bila_our);
+			double psnr = PSNR(im, output_bila_our);
+			long double ssim = SSIM(im, output_bila_our);
+			imwrite(dataFolderPath + "/bilateralComparisons/" + "spatial_sigma_" + std::to_string(i) + "_spectral_sigma_"  // saving the resulting images onto disk
 				+ std::to_string(j) + "_ssd_" + std::to_string(ssd) + "_rmse_" + std::to_string(rmse) +
 				"_psnr_" + std::to_string(psnr) + "_ssim_" + std::to_string(ssim) + ".PNG", output_bila_our);
 		}
