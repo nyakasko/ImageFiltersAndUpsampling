@@ -372,7 +372,7 @@ int main(int argc, char** argv) {
 	if (im.data == nullptr) {
 		std::cerr << "Failed to load image" << std::endl;
 	}
-	cv::Mat input = im;
+	cv::Mat input = im.clone();
 	cv::Mat noise(im.size(), im.type());
 	uchar mean = 0;
 	uchar stddev = 25;
@@ -386,10 +386,10 @@ int main(int argc, char** argv) {
 	for (auto i : spatial_sigma) {	// evaluating the filter on an image of my choice
 		for (auto j : spectral_sigma) {
 			cv::Mat output_bila_our = OurFilter_Bilateral(im, 5, i, j); // implementation of the bilateral filter
-			double ssd = SSD(im, output_bila_our);
-			double rmse = RMSE(im, output_bila_our);
-			double psnr = PSNR(im, output_bila_our);
-			long double ssim = SSIM(im, output_bila_our);
+			double ssd = SSD(input, output_bila_our);
+			double rmse = RMSE(input, output_bila_our);
+			double psnr = PSNR(input, output_bila_our);
+			long double ssim = SSIM(input, output_bila_our);
 			imwrite(dataFolderPath + "/bilateralComparisons/" + "spatial_sigma_" + std::to_string(i) + "_spectral_sigma_"  // saving the resulting images onto disk
 				+ std::to_string(j) + "_ssd_" + std::to_string(ssd) + "_rmse_" + std::to_string(rmse) +
 				"_psnr_" + std::to_string(psnr) + "_ssim_" + std::to_string(ssim) + ".PNG", output_bila_our);
